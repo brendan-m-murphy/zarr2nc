@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zarr2nc"
+version = "0.1.0"
+description = "CLI tools for exporting xarray-created Zarr stores to netCDF4/HDF5 files."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Your Name" }
+]
+dependencies = [
+  "dask[array]>=2024.6",
+  "h5netcdf>=1.3",
+  "h5py>=3.10",
+  "numpy>=1.26",
+  "xarray>=2024.6",
+  "zarr>=2.16",
+]
+
+[project.optional-dependencies]
+test = [
+  "coverage[toml]>=7.6",
+  "pytest>=8.2",
+]
+dev = [
+  "coverage[toml]>=7.6",
+  "mypy>=1.10",
+  "pytest>=8.2",
+  "ruff>=0.6",
+]
+mpi = [
+  "mpi4py>=3.1",
+  "netCDF4>=1.7",
+]
+
+[project.scripts]
+zarr2nc-slice = "zarr2nc.slice_writer:main"
+zarr2nc-shards = "zarr2nc.shards:main"
+zarr2nc-concat = "zarr2nc.concat:main"
+zarr2nc-mpi = "zarr2nc.mpi:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zarr2nc"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+markers = [
+  "integration: tests that write real Zarr/netCDF files",
+  "external: tests that require external command line tools such as ncrcat or nccopy",
+  "mpi: tests that require MPI-enabled netCDF/HDF5",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["zarr2nc"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
