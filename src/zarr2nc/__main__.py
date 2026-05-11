@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from zarr2nc.shards import main
-
+from zarr2nc.cli import main
 
 if __name__ == "__main__":
     main()

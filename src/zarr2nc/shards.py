@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any, cast
 
 import xarray as xr
 
-from zarr2nc.config import SliceOptions
+from zarr2nc import __version__
+from zarr2nc.config import NetcdfFormat, SliceOptions, ZarrFormat
 from zarr2nc.encoding import (
     parse_consolidated,
     parse_csv,
     parse_dim_int_map,
     parse_open_chunks,
+    parse_zarr_format,
 )
 from zarr2nc.slice_writer import convert_slice
 
@@ -56,19 +60,24 @@ def source_dim_size(
     dim: str,
     group: str | None,
     consolidated: bool | None,
+    zarr_format: ZarrFormat | None = None,
 ) -> int:
     ds = xr.open_zarr(
         source,
         group=group,
         consolidated=consolidated,
+        zarr_format=zarr_format,
         chunks=None,
         decode_cf=False,
         mask_and_scale=False,
         decode_times=False,
     )
-    if dim not in ds.sizes:
-        raise ValueError(f"Dimension {dim!r} not found in source dataset")
-    return int(ds.sizes[dim])
+    try:
+        if dim not in ds.sizes:
+            raise ValueError(f"Dimension {dim!r} not found in source dataset")
+        return int(ds.sizes[dim])
+    finally:
+        ds.close()
 
 
 def build_slice_options(
@@ -81,6 +90,7 @@ def build_slice_options(
     suffix: str,
     group: str | None,
     consolidated: bool | None,
+    zarr_format: ZarrFormat | None,
     open_chunks: object,
     output_chunks: dict[str, int] | None,
     format: str,
@@ -107,9 +117,10 @@ def build_slice_options(
                 stop=stop,
                 group=group,
                 consolidated=consolidated,
+                zarr_format=zarr_format,
                 open_chunks=open_chunks,
                 output_chunks=output_chunks,
-                format=format,
+                format=cast(NetcdfFormat, format),
                 compression=compression,
                 complevel=complevel,
                 shuffle=shuffle,
@@ -125,11 +136,33 @@ def build_slice_options(
 
 
 def write_manifest(output_dir: Path, options: list[SliceOptions]) -> Path:
+    return write_shards_manifest(output_dir, options)
+
+
+def write_shards_manifest(
+    output_dir: Path,
+    options: list[SliceOptions],
+    *,
+    source: str | None = None,
+    group: str | None = None,
+    consolidated: bool | None = None,
+    split_dim: str | None = None,
+    encoding: dict[str, Any] | None = None,
+) -> Path:
+    output_dir = output_dir.resolve()
     manifest = {
         "version": 1,
+        "tool": "zarr2nc",
+        "tool_version": __version__,
+        "source": source or (options[0].source if options else None),
+        "group": group,
+        "consolidated": consolidated,
+        "zarr_format": options[0].zarr_format if options else None,
+        "split_dim": split_dim or (options[0].dim if options else None),
+        "encoding": encoding or {},
         "shards": [
             {
-                "path": opt.target,
+                "path": os.path.relpath(Path(opt.target).resolve(), output_dir),
                 "dim": opt.dim,
                 "start": opt.start,
                 "stop": opt.stop,
@@ -179,6 +212,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prefix", default="part_")
     parser.add_argument("--suffix", default=".nc")
     parser.add_argument("--group", default=None, help="Optional Zarr group")
+    parser.add_argument(
+        "--zarr-format",
+        default="auto",
+        choices=["auto", "2", "3"],
+        help="Input Zarr format. Defaults to auto-detect.",
+    )
     parser.add_argument(
         "--consolidated",
         default="auto",
@@ -235,11 +274,13 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     consolidated = parse_consolidated(args.consolidated)
+    zarr_format = parse_zarr_format(args.zarr_format)
     source_size = source_dim_size(
         args.source,
         dim=args.dim,
         group=args.group,
         consolidated=consolidated,
+        zarr_format=zarr_format,
     )
     shards = plan_shards(source_size, shard_size=args.shard_size, num_shards=args.num_shards)
 
@@ -257,6 +298,7 @@ def main(argv: list[str] | None = None) -> None:
         suffix=args.suffix,
         group=args.group,
         consolidated=consolidated,
+        zarr_format=zarr_format,
         open_chunks=parse_open_chunks(args.open_chunks),
         output_chunks=parse_dim_int_map(args.chunks),
         format=args.format,
@@ -272,7 +314,22 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if not args.no_manifest:
-        write_manifest(output_dir, options)
+        write_shards_manifest(
+            output_dir,
+            options,
+            source=args.source,
+            group=args.group,
+            consolidated=consolidated,
+            split_dim=args.dim,
+            encoding={
+                "chunks": parse_dim_int_map(args.chunks),
+                "compression": compression,
+                "complevel": args.complevel,
+                "shuffle": not args.no_shuffle,
+                "float_dtype": args.float_dtype,
+                "format": args.format,
+            },
+        )
 
     if not args.dry_run:
         convert_shards(options, jobs=args.jobs)

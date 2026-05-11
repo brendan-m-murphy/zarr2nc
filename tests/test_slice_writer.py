@@ -23,7 +23,7 @@ def test_convert_slice_round_trips_basic_dataset(tmp_path) -> None:
         coords={"time": np.arange(6, dtype="int32"), "lat": np.array([50.0, 51.0])},
         attrs={"title": "minimal test dataset"},
     )
-    ds.to_zarr(source)
+    ds.to_zarr(source, zarr_format=2)
 
     convert_slice(
         SliceOptions(
@@ -32,6 +32,7 @@ def test_convert_slice_round_trips_basic_dataset(tmp_path) -> None:
             dim="time",
             start=2,
             stop=5,
+            zarr_format=2,
             output_chunks={"time": 2, "lat": 2},
             compression="gzip",
             complevel=1,

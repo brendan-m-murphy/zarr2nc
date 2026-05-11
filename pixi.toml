@@ -1,0 +1,45 @@
+[workspace]
+name = "zarr2nc"
+version = "0.1.0"
+description = "CLI tools for exporting xarray-created Zarr stores to netCDF4/HDF5 files."
+authors = ["Your Name"]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+
+[dependencies]
+python = ">=3.11,<3.12"
+dask = ">=2024.6"
+h5netcdf = ">=1.3"
+h5py = ">=3.10"
+hdf5 = "*"
+libnetcdf = "*"
+mypy = ">=1.10"
+nco = "*"
+numpy = ">=1.26"
+pytest = ">=8.2"
+ruff = ">=0.6"
+xarray = ">=2024.6"
+zarr = ">=2.16"
+
+[pypi-dependencies]
+zarr2nc = { path = ".", editable = true }
+
+[tasks]
+test = "pytest"
+lint = "ruff check ."
+typecheck = "mypy src"
+zarr2nc = "zarr2nc"
+smoke-python = "python examples/create_example_zarr.py && zarr2nc convert example.zarr smoke-python.nc --dim time --jobs 2 --num-shards 2 --backend python --validate full --overwrite"
+smoke = "python examples/create_example_zarr.py && zarr2nc convert example.zarr smoke.nc --dim time --jobs 2 --num-shards 2 --backend ncrcat --validate full --overwrite"
+
+[feature.mpi.dependencies]
+mpi4py = "*"
+netcdf4 = "*"
+openmpi = "*"
+
+[feature.mpi.tasks]
+mpi-info = "python -c \"import mpi4py, netCDF4; print('mpi4py', mpi4py.__version__); print('netCDF4', netCDF4.__version__)\""
+
+[environments]
+default = { features = [], solve-group = "default" }
+mpi = { features = ["mpi"], solve-group = "default" }

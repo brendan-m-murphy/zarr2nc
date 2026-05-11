@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Hashable, Iterable
 from typing import Any
 
 import xarray as xr
 
+from zarr2nc.config import ZarrFormat
 
 _MISSING = object()
 
@@ -55,6 +56,14 @@ def parse_consolidated(text: str) -> bool | None:
         raise ValueError("consolidated must be one of: auto, true, false") from exc
 
 
+def parse_zarr_format(text: str) -> ZarrFormat | None:
+    mapping: dict[str, ZarrFormat | None] = {"auto": None, "2": 2, "3": 3}
+    try:
+        return mapping[text.lower()]
+    except KeyError as exc:
+        raise ValueError("zarr-format must be one of: auto, 2, 3") from exc
+
+
 def parse_open_chunks(text: str) -> Any:
     """Parse the xarray.open_zarr chunks option from CLI text.
 
@@ -99,12 +108,13 @@ def extract_fill_values(ds: xr.Dataset) -> tuple[xr.Dataset, dict[str, Any]]:
     ds = ds.copy(deep=False)
     fill_values: dict[str, Any] = {}
 
-    for name in ds.variables:
-        attrs = dict(ds[name].attrs)
+    for raw_name in ds.variables:
+        name = str(raw_name)
+        attrs = dict(ds[raw_name].attrs)
         fill_value = attrs.pop("_FillValue", _MISSING)
         if fill_value is not _MISSING:
             fill_values[name] = fill_value
-            ds[name].attrs = attrs
+            ds[raw_name].attrs = attrs
 
     return ds, fill_values
 
@@ -130,15 +140,18 @@ def make_encoding(
     fill_values = fill_values or {}
     encoding: dict[str, dict[str, Any]] = {}
 
-    for name, da in ds.variables.items():
+    for raw_name, da in ds.variables.items():
+        name = str(raw_name)
         enc: dict[str, Any] = {}
 
         if name in fill_values:
             enc["_FillValue"] = fill_values[name]
+        elif raw_name not in ds.data_vars:
+            enc["_FillValue"] = None
 
         if chunks and da.ndim:
             enc["chunksizes"] = tuple(
-                min(chunks.get(dim, da.sizes[dim]), da.sizes[dim]) for dim in da.dims
+                min(chunks.get(str(dim), da.sizes[dim]), da.sizes[dim]) for dim in da.dims
             )
 
         should_compress = (
@@ -173,6 +186,9 @@ def ensure_valid_slice(start: int, stop: int, size: int, dim: str) -> None:
         raise ValueError(f"stop={stop} exceeds size {size} for dimension {dim!r}")
 
 
-def normalize_unlimited_dims(unlimited_dims: Iterable[str], default_dim: str) -> tuple[str, ...]:
+def normalize_unlimited_dims(
+    unlimited_dims: Iterable[Hashable],
+    default_dim: Hashable,
+) -> tuple[Hashable, ...]:
     dims = tuple(dict.fromkeys(unlimited_dims))
     return dims or (default_dim,)

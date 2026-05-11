@@ -38,6 +38,7 @@ mpi = [
 ]
 
 [project.scripts]
+zarr2nc = "zarr2nc.cli:main"
 zarr2nc-slice = "zarr2nc.slice_writer:main"
 zarr2nc-shards = "zarr2nc.shards:main"
 zarr2nc-concat = "zarr2nc.concat:main"

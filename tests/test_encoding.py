@@ -10,6 +10,7 @@ from zarr2nc.encoding import (
     parse_csv,
     parse_dim_int_map,
     parse_open_chunks,
+    parse_zarr_format,
 )
 
 
@@ -36,6 +37,11 @@ def test_parse_open_chunks() -> None:
     assert parse_open_chunks("native") == {}
     assert parse_open_chunks("none") is None
     assert parse_open_chunks("time=10") == {"time": 10}
+
+
+@pytest.mark.parametrize(("text", "expected"), [("auto", None), ("2", 2), ("3", 3)])
+def test_parse_zarr_format(text: str, expected: int | None) -> None:
+    assert parse_zarr_format(text) == expected
 
 
 def test_extract_fill_values_moves_attr_to_encoding_input() -> None:

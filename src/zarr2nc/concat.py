@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
+import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from zarr2nc.encoding import parse_dim_int_map
 
@@ -14,6 +17,37 @@ def expand_parts(parts: list[str]) -> list[str]:
         matches = sorted(glob.glob(item))
         expanded.extend(matches or [item])
     return expanded
+
+
+def require_executable(executable: str, *, purpose: str) -> None:
+    if shutil.which(executable) is None:
+        raise FileNotFoundError(
+            f"{purpose} requires {executable!r}, but it is not on PATH. "
+            "Use the portable Python backend, run inside the pixi environment, "
+            "or load the appropriate HPC module."
+        )
+
+
+def load_manifest(path: str | Path) -> dict[str, Any]:
+    return json.loads(Path(path).read_text())
+
+
+def shards_from_manifest(path: str | Path) -> list[dict[str, Any]]:
+    manifest = load_manifest(path)
+    return sorted(
+        manifest.get("shards", []),
+        key=lambda shard: (shard.get("start", 0), shard.get("stop", 0), shard.get("path", "")),
+    )
+
+
+def parts_from_manifest(path: str | Path) -> list[str]:
+    manifest_path = Path(path)
+    base_dir = manifest_path.parent
+    parts: list[str] = []
+    for shard in shards_from_manifest(manifest_path):
+        raw_path = Path(shard["path"])
+        parts.append(str(raw_path if raw_path.is_absolute() else base_dir / raw_path))
+    return parts
 
 
 def build_ncrcat_command(
@@ -72,6 +106,7 @@ def concat_parts(
     output_path = Path(output)
     if output_path.exists() and not overwrite:
         raise FileExistsError(f"{output} already exists; pass --overwrite")
+    require_executable(ncrcat, purpose="The ncrcat merge backend")
     cmd = build_ncrcat_command(parts, output, ncrcat=ncrcat, overwrite=overwrite, netcdf4=netcdf4)
     subprocess.run(cmd, check=True)
     return output
@@ -92,6 +127,7 @@ def repack_file(
     output = Path(output_path)
     if output.exists() and not overwrite:
         raise FileExistsError(f"{output_path} already exists; pass --overwrite")
+    require_executable(nccopy, purpose="nccopy repacking")
     cmd = build_nccopy_command(
         input_path,
         output_path,
@@ -109,9 +145,20 @@ def repack_file(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="zarr2nc-concat",
-        description="Concatenate shard .nc files with NCO ncrcat and optionally repack with nccopy.",
+        description=(
+            "Concatenate shard .nc files with NCO ncrcat and optionally repack with nccopy."
+        ),
     )
-    parser.add_argument("parts", nargs="+", help="Part files or glob patterns. Quote globs if needed.")
+    parser.add_argument(
+        "parts",
+        nargs="*",
+        help="Part files or glob patterns. Quote globs if needed.",
+    )
+    parser.add_argument(
+        "--manifest",
+        default=None,
+        help="Read part files from zarr2nc-shards.json and sort by shard offsets.",
+    )
     parser.add_argument("--output", required=True, help="Merged output .nc file")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--ncrcat", default="ncrcat", help="Path to ncrcat executable")
@@ -138,7 +185,9 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    parts = expand_parts(args.parts)
+    parts = parts_from_manifest(args.manifest) if args.manifest else expand_parts(args.parts)
+    if not parts:
+        parser.error("provide part files or --manifest")
     concat_parts(
         parts,
         args.output,

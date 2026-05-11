@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+NetcdfFormat = Literal["NETCDF4", "NETCDF4_CLASSIC"]
+ZarrFormat = Literal[2, 3]
 
 
 @dataclass(frozen=True)
@@ -16,9 +19,10 @@ class SliceOptions:
     stop: int
     group: str | None = None
     consolidated: bool | None = None
+    zarr_format: ZarrFormat | None = None
     open_chunks: Any = "auto"
     output_chunks: dict[str, int] | None = None
-    format: str = "NETCDF4"
+    format: NetcdfFormat = "NETCDF4"
     compression: str | None = "gzip"
     complevel: int = 2
     shuffle: bool = True

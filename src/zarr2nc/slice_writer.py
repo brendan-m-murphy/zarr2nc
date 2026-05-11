@@ -3,11 +3,12 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+from typing import cast
 
 import dask
 import xarray as xr
 
-from zarr2nc.config import SliceOptions
+from zarr2nc.config import NetcdfFormat, SliceOptions
 from zarr2nc.encoding import (
     clear_xarray_encodings,
     ensure_valid_slice,
@@ -18,6 +19,7 @@ from zarr2nc.encoding import (
     parse_csv,
     parse_dim_int_map,
     parse_open_chunks,
+    parse_zarr_format,
 )
 
 
@@ -26,6 +28,7 @@ def open_source_dataset(options: SliceOptions) -> xr.Dataset:
         options.source,
         group=options.group,
         consolidated=options.consolidated,
+        zarr_format=options.zarr_format,
         chunks=options.open_chunks,
         decode_cf=options.decode_cf,
         mask_and_scale=options.decode_cf,
@@ -82,7 +85,7 @@ def convert_slice(options: SliceOptions) -> str:
     try:
         with dask.config.set(scheduler=options.scheduler):
             ds.to_netcdf(
-                write_target,
+                str(write_target),
                 engine="h5netcdf",
                 format=options.format,
                 encoding=encoding,
@@ -109,6 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--start", required=True, type=int, help="Inclusive slice start index")
     parser.add_argument("--stop", required=True, type=int, help="Exclusive slice stop index")
     parser.add_argument("--group", default=None, help="Optional Zarr group")
+    parser.add_argument(
+        "--zarr-format",
+        default="auto",
+        choices=["auto", "2", "3"],
+        help="Input Zarr format. Defaults to auto-detect.",
+    )
     parser.add_argument(
         "--consolidated",
         default="auto",
@@ -169,9 +178,10 @@ def options_from_args(args: argparse.Namespace) -> SliceOptions:
         stop=args.stop,
         group=args.group,
         consolidated=parse_consolidated(args.consolidated),
+        zarr_format=parse_zarr_format(args.zarr_format),
         open_chunks=parse_open_chunks(args.open_chunks),
         output_chunks=parse_dim_int_map(args.chunks),
-        format=args.format,
+        format=cast(NetcdfFormat, args.format),
         compression=compression,
         complevel=args.complevel,
         shuffle=not args.no_shuffle,

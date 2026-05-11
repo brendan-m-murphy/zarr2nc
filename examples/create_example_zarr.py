@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import argparse
 import shutil
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
 
+parser = argparse.ArgumentParser(description="Create a tiny example xarray Zarr store.")
+parser.add_argument("--output", default="example.zarr")
+parser.add_argument("--zarr-format", type=int, choices=[2, 3], default=2)
+args = parser.parse_args()
 
-out = Path("example.zarr")
+out = Path(args.output)
 if out.exists():
     shutil.rmtree(out)
 
@@ -27,5 +32,5 @@ ds = xr.Dataset(
     attrs={"title": "example xarray-flavour Zarr store"},
 )
 
-ds.to_zarr(out)
+ds.to_zarr(out, zarr_format=args.zarr_format)
 print(out)
