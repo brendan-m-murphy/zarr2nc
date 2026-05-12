@@ -151,3 +151,8 @@ Deferred:
 - True MPI writes into one shared netCDF4/HDF5 file.
 - Raw compressed Zarr chunk transfer into HDF5 chunks.
 - Arbitrary third-party Zarr stores without xarray dimension metadata.
+- Direct support for merging parts whose non-concatenation dimensions change
+  size across files. The Python backend now reports this clearly. A likely
+  future interface is an explicit label-index option such as
+  `--align-index nsite=sitenames`, which would promote `sitenames` to an xarray
+  index for merge alignment, then reset it before writing NetCDF.

@@ -19,8 +19,29 @@ from zarr2nc.encoding import (
 MergeBackend = Literal["python", "ncrcat", "none"]
 
 
+class MergeAlignmentError(ValueError):
+    """Raised when Python merge cannot align shard dimensions."""
+
+
 def _temporary_target(target: Path) -> Path:
     return target.with_name(f".{target.name}.tmp.{os.getpid()}")
+
+
+def _is_varying_dimension_error(exc: Exception) -> bool:
+    message = str(exc)
+    return (
+        "cannot reindex or align along dimension" in message
+        and "conflicting dimension sizes" in message
+    )
+
+
+def _raise_helpful_alignment_error(exc: Exception) -> None:
+    raise MergeAlignmentError(
+        "Cannot merge parts because a non-concatenation dimension has different sizes "
+        "across files. If that dimension is identified by a label variable, such as "
+        "sitenames(nsite), merge with xarray by promoting the label variable to an index "
+        "before concatenation, then reset the index before writing NetCDF."
+    ) from exc
 
 
 def merge_python_parts(
@@ -52,17 +73,24 @@ def merge_python_parts(
     if write_target.exists():
         write_target.unlink()
 
-    ds = xr.open_mfdataset(
-        list(parts),
-        engine="h5netcdf",
-        combine="nested",
-        concat_dim=dim,
-        chunks=None,
-        decode_cf=False,
-        mask_and_scale=False,
-        decode_times=False,
-    )
+    ds: xr.Dataset | None = None
     try:
+        try:
+            ds = xr.open_mfdataset(
+                list(parts),
+                engine="h5netcdf",
+                combine="nested",
+                concat_dim=dim,
+                chunks=None,
+                decode_cf=False,
+                mask_and_scale=False,
+                decode_times=False,
+            )
+        except Exception as exc:
+            if _is_varying_dimension_error(exc):
+                _raise_helpful_alignment_error(exc)
+            raise
+
         ds = clear_xarray_encodings(ds)
         ds, fill_values = extract_fill_values(ds)
         encoding = make_encoding(
@@ -88,7 +116,8 @@ def merge_python_parts(
             write_target.unlink()
         raise
     finally:
-        ds.close()
+        if ds is not None:
+            ds.close()
 
     return str(output_path)
 

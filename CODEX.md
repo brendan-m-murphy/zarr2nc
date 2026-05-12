@@ -217,7 +217,12 @@ pixi run smoke
 2. Benchmark Python merge versus `ncrcat` across representative shard sizes and
    compression levels.
 3. Add DataTree support with group-by-group conversion.
-4. Add top-level `nccopy` repack options once there is a clear user-facing
+4. Add an explicit label-index merge option for files whose non-concatenation
+   dimensions vary across parts, for example `--align-index nsite=sitenames`.
+   The intended implementation is: rename the label variable to the dimension,
+   promote it to an xarray index, concatenate with `join="outer"`, then reset
+   the index and restore the label variable before writing NetCDF.
+5. Add top-level `nccopy` repack options once there is a clear user-facing
    workflow for intermediate versus final output files.
-5. Implement the MPI writer only in an MPI-capable pixi/conda or HPC module
+6. Implement the MPI writer only in an MPI-capable pixi/conda or HPC module
    environment, not in the default `uv` development environment.
